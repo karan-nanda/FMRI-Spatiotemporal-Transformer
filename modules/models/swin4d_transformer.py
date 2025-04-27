@@ -46,3 +46,4 @@ def window_partion(x, window_size):
         windows: (B*num_windows, window_size*window_size*window_size*window_size, C)
     """
     x_shape = x.size()
+    b,d,h,w,t,c = x_shape
