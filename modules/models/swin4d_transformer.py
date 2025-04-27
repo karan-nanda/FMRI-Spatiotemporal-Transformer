@@ -29,4 +29,20 @@ __all__  = [
 
 
 def window_partion(x, window_size):
-    None
+    """window partition function based on: "Liu et al.,
+    Swin Transformer: Hierarchical Vision Transformer using Shifted Windows
+    <https://arxiv.org/abs/2103.14030>"
+    https://github.com/microsoft/Swin-Transformer
+
+    Partition tokens into their respective windows
+
+    Args:
+        x: input tensor (B, D, H, W, T, C)
+
+        window_size: local window size(looking at the window that captures the fMRI).
+
+
+    Returns:
+        windows: (B*num_windows, window_size*window_size*window_size*window_size, C)
+    """
+    x_shape = x.size()
