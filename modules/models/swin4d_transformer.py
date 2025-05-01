@@ -47,3 +47,47 @@ def window_partion(x, window_size):
     """
     x_shape = x.size()
     b,d,h,w,t,c = x_shape
+    x = x.view(
+        b,
+        d // window_size[0],
+        window_size[0],
+        h // window_size[1],
+        window_size[1],
+        w // window_size[2],
+        window_size[2],
+        t // window_size[3],
+        window_size[3],
+        c
+    )
+    windows = (
+        x.permute(0,1,3,5,6,2,4,6,8,9)
+        .contiguous().view(-1, window_size[0]*window_size[1]*window_size[2]*window_size[3])
+    )
+    return windows
+
+def window_reverse(windows, window_size, dims):
+    b,d,h,w,t = dims
+    x = windows.view(
+        b,
+        torch.div(d, window_size[0], rounding_mode='floor'),
+        torch.div(h, window_size[0], rounding_mode='floor'),
+        torch.div(w, window_size[0], rounding_mode='floor'),
+        torch.div(t, window_size[0], rounding_mode='floor'),
+        window_size[0],
+        window_size[1],
+        window_size[2],
+        window_size[3],
+        -1,
+    )
+    x = x.permute(0,1,5,2,6,3,7,4,8,9)
+    
+    
+    return x
+
+def get_window_size(x_size, window_size, shift_size = None):
+    
+    
+    use_window_size = list(window_size)
+    if shift_size is not None:
+        use_shift_size = list(shift_size)
+        
