@@ -90,4 +90,80 @@ def get_window_size(x_size, window_size, shift_size = None):
     use_window_size = list(window_size)
     if shift_size is not None:
         use_shift_size = list(shift_size)
+    for i in range(len(x_size)):
+        if x_size[i] <= window_size[i]:
+            use_window_size[i] = x_size[i]
+            if shift_size is not None:
+                use_shift_size[i] = 0
+                
+    if shift_size is None:
+        return tuple(use_window_size)
+    else:
+        return tuple(use_window_size) , tuple(use_shift_size)
+    
+class WindowAttention4D(nn.Module):
+    
+    def __init__(
+        self,
+        dim:int,
+        num_heads:int,
+        window_size: Sequence[int],
+        qkv_bias : bool = False,
+        attn_drop : float = 0.0,
+        proj_drop : float = 0.0,
+    ) -> None:
+        """
+        Args:
+            dim (int): number of channels(feature)
+            num_heads (int): number of attention heads
+            window_size (Sequence[int]): local window size
+            qkv_bias (bool, optional): add a bias to the query, key and value tensor. Defaults to False.
+            attn_drop (float, optional): attention dropout rate. Defaults to 0.0.
+            proj_drop (float, optional): dropout rate of output. Defaults to 0.0.
+        """
         
+        super().__init__()
+        self.dim = dim
+        self.window_size = window_size
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = head_dim ** -0.5
+        mesh_args = torch.meshgrid.__kwdefaults__
+        
+        self.qkv = nn.Linear (dim , dim * 3, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim , dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+        self.softmax = nn.Softmax(dim= -1)
+        
+        
+    def forward(self, x, mask):
+        
+        b_, n,c = x.shape
+        qkv = self.qkv(x).reshape(b_, n,3,self.num_heads, c // self.num_heads).permute(2,0,3,1,4)
+        q,k,v = qkv[0], qkv[1], qkv[2]
+        q = q * self.scale
+        attn = q @ k.transpose(-2,-1)
+        
+        
+        if mask is not None:
+            nw = mask.shape[0]
+            attn = attn.view(b_ // nw, nw, self.num_heads, n, n) + mask.to(attn.dtype).unsqueeze(1).unsqueeze(0)
+            attn = attn.view(-1, self.num_heads, n, n)
+            attn = self.softmax(attn)
+        else:
+            attn = self.softmax(attn)
+        attn = self.attn_drop(attn)
+        x = (attn @ v).transpose(1,2).reshape(b_,n,c)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        
+        return x
+    
+class SwinTransformerBlock4D(nn.Module):
+    
+    def __init__(
+        self,
+        dim: int,
+        num_heads,
+    ) -> None:
