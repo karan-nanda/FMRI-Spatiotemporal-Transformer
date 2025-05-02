@@ -165,5 +165,39 @@ class SwinTransformerBlock4D(nn.Module):
     def __init__(
         self,
         dim: int,
-        num_heads,
+        num_heads: int,
+        window_size: Sequence[int],
+        shift_size:Sequence[int],
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        drop:float = 0.0,
+        attn_drop : float = 0.0,
+        drop_path:float  = 0.0,
+        act_layer: str = "GELU",
+        norm_layer: Type[LayerNorm] = nn.LayerNorm,
+        use_checkpoint: bool= False,
     ) -> None:
+
+
+        super().__init__()
+        self.dim = dim
+        self.num_heads = num_heads
+        self.window_size = window_size
+        self.shift_size = shift_size
+        self.mlp_ratio = mlp_ratio
+        self.use_checkpoint = use_checkpoint
+
+        self.norm1 = norm_layer(dim)
+        self.attn = WindowAttention4D(
+            dim,
+            window_size=window_size,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            attn_drop=attn_drop,
+            proj_drop=drop,
+        )
+
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+        self.norm2 = norm_layer(dim)
+        mlp_hidden_dim = int(dim * mlp_ratio)
+        self.mlp = Mlp(hidden_size=dim, mlp_dim=mlp_hidden_dim, act=act_layer, dropout_rate=drop, dropout_mode="swin")
