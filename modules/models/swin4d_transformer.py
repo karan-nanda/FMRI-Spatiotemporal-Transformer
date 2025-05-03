@@ -201,3 +201,6 @@ class SwinTransformerBlock4D(nn.Module):
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(hidden_size=dim, mlp_dim=mlp_hidden_dim, act=act_layer, dropout_rate=drop, dropout_mode="swin")
+
+    def forward_part1(self, x, mask_matrix):
+        
