@@ -28,7 +28,7 @@ __all__  = [
 ]
 
 
-def window_partion(x, window_size):
+def window_partition(x, window_size):
     """window partition function based on: "Liu et al.,
     Swin Transformer: Hierarchical Vision Transformer using Shifted Windows
     <https://arxiv.org/abs/2103.14030>"
@@ -203,4 +203,56 @@ class SwinTransformerBlock4D(nn.Module):
         self.mlp = Mlp(hidden_size=dim, mlp_dim=mlp_hidden_dim, act=act_layer, dropout_rate=drop, dropout_mode="swin")
 
     def forward_part1(self, x, mask_matrix):
+        b,d,h,w,t,c = x.shape
+        window_size, shift_size = get_window_size((d,h,w,t), self.window_size, self.shift_size)
+        x = self.norm1(x)
         
+        pad_d0 = pad_h0 = pad_w0 = pad_t0 = 0
+        pad_d1 = (window_size[0] - d % window_size[0]) % window_size[0]
+        pad_h1 = (window_size[1] - h % window_size[1]) % window_size[1]
+        pad_w1 = (window_size[2] - w % window_size[2]) % window_size[2]
+        pad_t1 = (window_size[3] - t % window_size[3]) % window_size[3]
+        x = F.pad(x, (0, 0, pad_t0, pad_t1, pad_w0, pad_w1, pad_h0, pad_h1, pad_d0, pad_d1))  # last tuple first in
+        _, dp, hp, wp, tp, _ = x.shape
+        dims = [b, dp, hp, wp, tp]
+        if any(i > 0 for i in shift_size):
+            shifted_x = torch.roll(
+                x, shifts=(-shift_size[0], -shift_size[1], -shift_size[2], -shift_size[3]), dims=(1, 2, 3, 4)
+            )
+            attn_mask = mask_matrix
+        else:
+            shifted_x = x
+            attn_mask = None
+        x_windows = window_partition(shifted_x, window_size)
+        attn_windows = self.attn(x_windows, mask=attn_mask)
+        attn_windows = attn_windows.view(-1, *(window_size + (c,)))
+        shifted_x = window_reverse(attn_windows, window_size, dims)
+        if any(i > 0 for i in shift_size):
+            x = torch.roll(
+                shifted_x, shifts=(shift_size[0], shift_size[1], shift_size[2], shift_size[3]), dims=(1, 2, 3, 4)
+            )
+        else:
+            x = shifted_x
+
+        if pad_d1 > 0 or pad_h1 > 0 or pad_w1 > 0 or pad_t1 > 0:
+            x = x[:, :d, :h, :w, :t, :].contiguous()
+
+        return x
+    
+
+    def forward_part2(self, x):
+        x = self.drop_path(self.mlp(self.norm2(x)))
+        return x
+
+    def forward(self, x, mask_matrix):
+        shortcut = x
+        if self.use_checkpoint:
+            x = checkpoint.checkpoint(self.forward_part1, x, mask_matrix)
+        else:
+            x = self.forward_part1(x, mask_matrix)
+        x = shortcut + self.drop_path(x)
+        if self.use_checkpoint:
+            x = x + checkpoint.checkpoint(self.forward_part2, x)
+        else:
+            x = x + self.forward_part2(x)
+        return x
